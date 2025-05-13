@@ -16,6 +16,12 @@ db = Database(Telegram.DATABASE_URL, Telegram.SESSION_NAME)
 
 async def get_file_ids(client: Client | bool, db_id: str, multi_clients, message) -> Optional[FileId]:
     logging.debug("Starting of get_file_ids")
+
+    # 🚫 Prevent loop: Ignore files coming from FLOG_CHANNEL
+    if message.chat.id == Telegram.FLOG_CHANNEL:
+        logging.warning("Ignored message from FLOG_CHANNEL to avoid recursion")
+        return None
+    logging.debug("Starting of get_file_ids")
     file_info = await db.get_file(db_id)
     if (not "file_ids" in file_info) or not client:
         logging.debug("Storing file_id of all clients in DB")
@@ -126,6 +132,10 @@ async def update_file_id(msg_id, multi_clients):
 
 
 async def send_file(client: Client, db_id, file_id: str, message):
+    # Optional guard (extra safety)
+    if message.chat.id == Telegram.FLOG_CHANNEL:
+        logging.warning("Skipping send_file because message is already from FLOG_CHANNEL")
+        return None
     file_caption = getattr(message, 'caption', None) or get_name(message)
     log_msg = await client.send_cached_media(chat_id=Telegram.FLOG_CHANNEL, file_id=file_id,
                                              caption=f'**{file_caption}**')
