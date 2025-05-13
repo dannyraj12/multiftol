@@ -186,19 +186,10 @@ async def is_user_authorized(message):
 async def is_user_exist(bot, message):
     if not bool(await db.get_user(message.from_user.id)):
         await db.add_user(message.from_user.id)
-        await bot.send_message(
-            Telegram.ULOG_CHANNEL,
-            f"**#NᴇᴡUsᴇʀ**\n**⬩ ᴜsᴇʀ ɴᴀᴍᴇ :** [{message.from_user.first_name}](tg://user?id={message.from_user.id})\n**⬩ ᴜsᴇʀ ɪᴅ :** `{message.from_user.id}`"
-        )
 
 async def is_channel_exist(bot, message):
     if not bool(await db.get_user(message.chat.id)):
         await db.add_user(message.chat.id)
-        members = await bot.get_chat_members_count(message.chat.id)
-        await bot.send_message(
-            Telegram.ULOG_CHANNEL,
-            f"**#NᴇᴡCʜᴀɴɴᴇʟ** \n**⬩ ᴄʜᴀᴛ ɴᴀᴍᴇ :** `{message.chat.title}`\n**⬩ ᴄʜᴀᴛ ɪᴅ :** `{message.chat.id}`\n**⬩ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs :** `{members}`"
-        )
 
 async def verify_user(bot, message):
     if not await is_user_authorized(message):
