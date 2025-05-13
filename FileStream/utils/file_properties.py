@@ -14,36 +14,28 @@ from FileStream.config import Telegram, Server
 db = Database(Telegram.DATABASE_URL, Telegram.SESSION_NAME)
 
 
-async def get_file_ids(client: Client | bool, db_id: str, multi_clients, message) -> Optional[FileId]:
-    logging.debug("Starting of get_file_ids")
-
-    # 🚫 Prevent loop: Ignore files coming from FLOG_CHANNEL
-    if message.chat.id == Telegram.FLOG_CHANNEL:
-        logging.warning("Ignored message from FLOG_CHANNEL to avoid recursion")
-        return None
-    logging.debug("Starting of get_file_ids")
+async def get_file_ids(client: Client | bool, db_id: str, multi_clients,
+                       message) -> Optional[FileId]:
     file_info = await db.get_file(db_id)
-    if (not "file_ids" in file_info) or not client:
-        logging.debug("Storing file_id of all clients in DB")
-        log_msg = await send_file(FileStream, db_id, file_info['file_id'], message)
-        await db.update_file_ids(db_id, await update_file_id(log_msg.id, multi_clients))
-        logging.debug("Stored file_id of all clients in DB")
-        if not client:
-            return
-        file_info = await db.get_file(db_id)
-
     file_id_info = file_info.setdefault("file_ids", {})
-    if not str(client.id) in file_id_info:
-        logging.debug("Storing file_id in DB")
-        log_msg = await send_file(FileStream, db_id, file_info['file_id'], message)
-        msg = await client.get_messages(Telegram.FLOG_CHANNEL, log_msg.id)
-        media = get_media_from_message(msg)
-        file_id_info[str(client.id)] = getattr(media, "file_id", "")
+    
+    # Use the primary client for initial file tracking
+    primary_client = list(multi_clients.values())[0]
+    
+    if isinstance(client, bool):
+        # Handle initial file tracking
+        file_id_info[str(primary_client.id)] = file_info['file_id']
         await db.update_file_ids(db_id, file_id_info)
-        logging.debug("Stored file_id in DB")
-
+        return FileId.decode(file_info['file_id'])
+    elif client:
+        # Handle subsequent client file tracking
+        if not str(client.id) in file_id_info:
+            file_id_info[str(client.id)] = file_info['file_id']
+            await db.update_file_ids(db_id, file_id_info)
+            
     logging.debug("Middle of get_file_ids")
-    file_id = FileId.decode(file_id_info[str(client.id)])
+    client_id = str(primary_client.id if isinstance(client, bool) else client.id)
+    file_id = FileId.decode(file_id_info[client_id])
     setattr(file_id, "file_size", file_info['file_size'])
     setattr(file_id, "mime_type", file_info['mime_type'])
     setattr(file_id, "file_name", file_info['file_name'])
@@ -91,8 +83,12 @@ def get_name(media_msg: Message | FileId) -> str:
             media_type = "file"
 
         formats = {
-            "photo": "jpg", "audio": "mp3", "voice": "ogg",
-            "video": "mp4", "animation": "mp4", "video_note": "mp4",
+            "photo": "jpg",
+            "audio": "mp3",
+            "voice": "ogg",
+            "video": "mp4",
+            "animation": "mp4",
+            "video_note": "mp4",
             "sticker": "webp"
         }
 
@@ -132,23 +128,5 @@ async def update_file_id(msg_id, multi_clients):
 
 
 async def send_file(client: Client, db_id, file_id: str, message):
-    # Optional guard (extra safety)
-    if message.chat.id == Telegram.FLOG_CHANNEL:
-        logging.warning("Skipping send_file because message is already from FLOG_CHANNEL")
-        return None
-    file_caption = getattr(message, 'caption', None) or get_name(message)
-    log_msg = await client.send_cached_media(chat_id=Telegram.FLOG_CHANNEL, file_id=file_id,
-                                             caption=f'**{file_caption}**')
-
-    if message.chat.type == ChatType.PRIVATE:
-        await log_msg.reply_text(
-            text=f"**RᴇQᴜᴇꜱᴛᴇᴅ ʙʏ :** [{message.from_user.first_name}](tg://user?id={message.from_user.id})\n**Uꜱᴇʀ ɪᴅ :** `{message.from_user.id}`\n**Fɪʟᴇ ɪᴅ :** `{db_id}`",
-            disable_web_page_preview=True, parse_mode=ParseMode.MARKDOWN, quote=True)
-    else:
-        await log_msg.reply_text(
-            text=f"**RᴇQᴜᴇꜱᴛᴇᴅ ʙʏ :** {message.chat.title} \n**Cʜᴀɴɴᴇʟ ɪᴅ :** `{message.chat.id}`\n**Fɪʟᴇ ɪᴅ :** `{db_id}`",
-            disable_web_page_preview=True, parse_mode=ParseMode.MARKDOWN, quote=True)
-
-    return log_msg
+    return None
     # return await client.send_cached_media(Telegram.BIN_CHANNEL, file_id)
-
